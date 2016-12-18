@@ -63,8 +63,9 @@ set(handles.filenameText, 'String', fileName);
 setappdata(0, 'file_name', fileName);
 setappdata(0, 'path_name', pathName);
 videoSrc = vision.VideoFileReader(strcat(pathName, fileName));
-[hFig, hAxes] = createFigureAndAxes();
-insertButtons(hFig, hAxes, videoSrc);
+hFig = handles.figure1;
+[hAxes] = createFigureAndAxes(hFig);
+insertButtons(hFig, hAxes, videoSrc, handles);
 end
 
 % --- Executes on button press in proceedButton.
@@ -83,25 +84,17 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
 end
 end
 
-function [hFig, hAxes] = createFigureAndAxes()
+function log(newMessage, handles)
+    message = get(handles.log, 'String');
+    message{end+1}=newMessage;
+    
+    set(handles.log, 'string', message);
+end
 
-% Close figure opened by last run
-figTag = 'CVST_VideoOnAxis_9804532';
-close(findobj('tag',figTag));
-
-% Create new figure
-hFig = figure('numbertitle', 'off', ...
-    'name', 'Video In Custom GUI', ...
-    'menubar','none', ...
-    'toolbar','none', ...
-    'resize', 'on', ...
-    'tag',figTag, ...
-    'renderer','painters', ...
-    'position',[680 678 480 240]);
+function hAxes = createFigureAndAxes(hFig)
 
 % Create axes and titles
-hAxes.axis1 = createPanelAxisTitle(hFig,[0.1 0.2 0.36 0.6],'Original Video'); % [X Y W H]
-hAxes.axis2 = createPanelAxisTitle(hFig,[0.5 0.2 0.36 0.6],'Rotated Video');
+hAxes.axis1 = createPanelAxisTitle(hFig,[0.062 0.4 0.893 0.5],'Video'); % [X Y W H]
 end
 
 function hAxis = createPanelAxisTitle(hFig, pos, axisTitle)
@@ -123,20 +116,20 @@ uicontrol('style','text',...
     'BackgroundColor',hFig.Color);
 end
 
-function insertButtons(hFig,hAxes,videoSrc)
+function insertButtons(hFig,hAxes,videoSrc,handles)
 
 % Play button with text Start/Pause/Continue
 uicontrol(hFig,'unit','pixel','style','pushbutton','string','Start',...
     'position',[10 10 75 25], 'tag','PBButton123','callback',...
-    {@playCallback,videoSrc,hAxes});
+    {@playCallback,videoSrc,hAxes,handles});
 
 % Exit button with text Exit
 uicontrol(hFig,'unit','pixel','style','pushbutton','string','Exit',...
     'position',[100 10 50 25],'callback', ...
-    {@exitCallback,videoSrc,hFig});
+    {@exitCallback,videoSrc,hFig,handles});
 end
 
-function playCallback(hObject,~,videoSrc,hAxes)
+function playCallback(hObject,~,videoSrc,hAxes,handles)
 try
     % Check the status of play button
     isTextStart = strcmp(hObject.String,'Start');
@@ -162,8 +155,7 @@ try
         [frame,rotatedImg,angle] = getAndProcessFrame(videoSrc,angle);
         % Display input video frame on axis
         showFrameOnAxis(hAxes.axis1, frame);
-        % Display rotated video frame on axis
-        showFrameOnAxis(hAxes.axis2, rotatedImg);
+        log('blabla',handles);
     end
     
     % When video reaches the end of file, display "Start" on the
@@ -190,7 +182,7 @@ rotatedImg  = imrotate(paddedFrame, angle, 'bilinear', 'crop');
 angle       = angle + 1;
 end
 
-function exitCallback(~,~,videoSrc,hFig)
+function exitCallback(~,~,videoSrc,hFig,handles)
 
 % Close the video file
 release(videoSrc);
