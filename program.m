@@ -23,7 +23,7 @@ function varargout = program(varargin)
 
 % Edit the above text to modify the response to help program
 
-% Last Modified by GUIDE v2.5 18-Dec-2016 14:03:43
+% Last Modified by GUIDE v2.5 18-Dec-2016 20:25:59
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -62,16 +62,13 @@ function fileDialog_Callback(hObject, eventdata, handles)
 set(handles.filenameText, 'String', fileName);
 setappdata(0, 'file_name', fileName);
 setappdata(0, 'path_name', pathName);
+setappdata(0, 'current_frame', 1);
+set(handles.log, 'string', '');
+
 videoSrc = vision.VideoFileReader(strcat(pathName, fileName));
 hFig = handles.figure1;
 [hAxes] = createFigureAndAxes(hFig);
 insertButtons(hFig, hAxes, videoSrc, handles);
-end
-
-% --- Executes on button press in proceedButton.
-function proceedButton_Callback(hObject, eventdata, handles)
-x = getappdata(0, 'file_name')
-y = getappdata(0, 'path_name')
 end
 
 function log_Callback(hObject, eventdata, handles)
@@ -85,10 +82,10 @@ end
 end
 
 function log(newMessage, handles)
-    message = get(handles.log, 'String');
-    message{end+1}=newMessage;
-    
-    set(handles.log, 'string', message);
+message = get(handles.log, 'String');
+message{end+1}=newMessage;
+
+set(handles.log, 'string', message);
 end
 
 function hAxes = createFigureAndAxes(hFig)
@@ -155,7 +152,14 @@ try
         [frame,rotatedImg,angle] = getAndProcessFrame(videoSrc,angle);
         % Display input video frame on axis
         showFrameOnAxis(hAxes.axis1, frame);
-        log('blabla',handles);
+        
+        frameNo = getappdata(0, 'current_frame');
+        plate = recognizePlateForGivenFrame(frame, frameNo, handles);
+        if ~isempty(plate)
+            log(plate,handles);
+        end
+        
+        setappdata(0, 'current_frame', frameNo + 1);
     end
     
     % When video reaches the end of file, display "Start" on the
@@ -188,4 +192,20 @@ function exitCallback(~,~,videoSrc,hFig,handles)
 release(videoSrc);
 % Close the figure window
 close(hFig);
+end
+
+
+function plate = recognizePlateForGivenFrame(frame, frameNo, handles)
+recognized = recognizePlate(frame);
+
+if isempty(recognized)
+    plate = '';
+else
+    plate = strcat('frame: ', int2str(frameNo), ', recognized plate: ', recognized);
+end
+end
+
+%only this needs to be implemented ! :)
+function plate = recognizePlate(frame)
+plate = 'TODO';
 end
