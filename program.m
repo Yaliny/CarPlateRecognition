@@ -59,6 +59,10 @@ end
 % --- Executes on button press in fileDialog.
 function fileDialog_Callback(hObject, eventdata, handles)
 [fileName,pathName] = uigetfile({'*.mp4'; '*.mkv'; '*.avi'},'Select the video');
+if isequal(fileName, 0) % user pressed cancel
+    return;
+end
+
 set(handles.filenameText, 'String', fileName);
 setappdata(0, 'file_name', fileName);
 setappdata(0, 'path_name', pathName);
@@ -101,16 +105,12 @@ hPanel = uipanel('parent',hFig,'Position',pos,'Units','Normalized');
 
 % Create axis
 hAxis = axes('position',[0 0 1 1],'Parent',hPanel);
-hAxis.XTick = [];
-hAxis.YTick = [];
-hAxis.XColor = [1 1 1];
-hAxis.YColor = [1 1 1];
+set(hAxis, 'XTick', []);
+set(hAxis, 'YTick', []);
+set(hAxis, 'XColor', [1 1 1]);
+set(hAxis, 'YColor', [1 1 1]);
 titlePos = [pos(1)+0.02 pos(2)+pos(3)+0.3 0.3 0.07];
-uicontrol('style','text',...
-    'String', axisTitle,...
-    'Units','Normalized',...
-    'Parent',hFig,'Position', titlePos,...
-    'BackgroundColor',hFig.Color);
+uicontrol('style','text','String', axisTitle,'Units','Normalized','Parent',hFig,'Position', titlePos,'BackgroundColor', get(hFig, 'Color'));
 end
 
 function insertButtons(hFig,hAxes,videoSrc,handles)
@@ -129,8 +129,9 @@ end
 function playCallback(hObject,~,videoSrc,hAxes,handles)
 try
     % Check the status of play button
-    isTextStart = strcmp(hObject.String,'Start');
-    isTextCont  = strcmp(hObject.String,'Continue');
+    value = get(hObject, 'String');
+    isTextStart = strcmp(value, 'Start');
+    isTextCont  = strcmp(value, 'Continue');
     if isTextStart
         % Two cases: (1) starting first time, or (2) restarting
         % Start from first frame
@@ -139,33 +140,38 @@ try
         end
     end
     if (isTextStart || isTextCont)
-        hObject.String = 'Pause';
+        set(hObject, 'String', 'Pause');
     else
-        hObject.String = 'Continue';
+        set(hObject, 'String', 'Continue');
     end
     
     % Rotate input video frame and display original and rotated
     % frames on figure
     angle = 0;
-    while strcmp(hObject.String, 'Pause') && ~isDone(videoSrc)
+    while strcmp(get(hObject, 'String'), 'Pause') && ~isDone(videoSrc)
         % Get input video frame and rotated frame
-        [frame,rotatedImg,angle] = getAndProcessFrame(videoSrc,angle);
+        [frame] = getAndProcessFrame(videoSrc,angle);
+        
+        frameNo = getappdata(0, 'current_frame');
+        setappdata(0, 'current_frame', frameNo + 1);
+        
         % Display input video frame on axis
         showFrameOnAxis(hAxes.axis1, frame);
         
-        frameNo = getappdata(0, 'current_frame');
+        if int32(frameNo) ~= 271 % FIXME: delete
+           continue;
+        end
+
         plate = recognizePlateForGivenFrame(frame, frameNo, handles);
         if ~isempty(plate)
             log(plate,handles);
         end
-        
-        setappdata(0, 'current_frame', frameNo + 1);
     end
     
     % When video reaches the end of file, display "Start" on the
     % play button.
     if isDone(videoSrc)
-        hObject.String = 'Start';
+        set(hObject, 'String', 'Start');
     end
 catch ME
     % Re-throw error message if it is not related to invalid handle
@@ -175,15 +181,15 @@ catch ME
 end
 end
 
-function [frame,rotatedImg,angle] = getAndProcessFrame(videoSrc,angle)
+function [frame] = getAndProcessFrame(videoSrc,angle)
 
 % Read input video frame
 frame = step(videoSrc);
 
 % Pad and rotate input video frame
-paddedFrame = padarray(frame, [30 30], 0, 'both');
-rotatedImg  = imrotate(paddedFrame, angle, 'bilinear', 'crop');
-angle       = angle + 1;
+%paddedFrame = padarray(frame, [30 30], 0, 'both');
+%rotatedImg  = imrotate(paddedFrame, angle, 'bilinear', 'crop');
+%angle       = angle + 1;
 end
 
 function exitCallback(~,~,videoSrc,hFig,handles)
@@ -207,5 +213,60 @@ end
 
 %only this needs to be implemented ! :)
 function plate = recognizePlate(frame)
-plate = 'TODO';
+plate = '';
+
+% plate detection start
+H = padarray(2,[2 2]) - fspecial('gaussian' ,[5 5],2); % create unsharp mask
+sharpened = imfilter(frame,H);  % create a sharpened version of the image using that mask
+im=rgb2gray(sharpened);
+[g3, t3]=edge(im, 'Canny', [0.0001, 0.02], 1);
+se=strel('rectangle', [1 1]);
+BWimage=imerode(g3,se);
+gg = imclearborder(BWimage,8);
+bw = bwareaopen(gg,200);
+gg1 = imclearborder(bw,26);
+
+%Dilation
+Id = imdilate(gg1, strel('diamond', 1));
+
+%Fill
+If = imfill(Id, 'holes');
+
+%Find Plate
+[lab, n] = bwlabel(If);
+
+regions = regionprops(lab, 'All');
+regionsCount = size(regions, 1) ;
+
+for i = 1:regionsCount
+    region = regions(i);
+    RectangleOfChoice = region.BoundingBox;
+    PlateExtent = region.Extent;
+
+    PlateWidth  = fix(RectangleOfChoice(3));
+    PlateHeight = fix(RectangleOfChoice(4));
+
+   if PlateWidth >= PlateHeight*1 && PlateExtent >= 0.7
+        im2 = imcrop(frame, RectangleOfChoice);
+        im2 = binarizeForOCR(im2);
+        res = ocr(im2, 'CharacterSet', 'ABCDEFGHIJKLMNOPQRSTUWXYZ0123456789', 'TextLayout', 'Line');
+        text = strtrim(res.Text);
+
+        if testPlateMatch(text)
+            plate = text;
+            break;
+        end
+    end
+end
+end
+
+function image = binarizeForOCR(im)
+    Icorrected = imtophat(im, strel('disk', 15));
+    level = graythresh(Icorrected);
+    image = im2bw(Icorrected,level);
+end
+
+function result = testPlateMatch(text)
+    regularExpr = '[A-Z]{2} \d{4}[A-Z]'; % TODO: add other formats
+    result = regexp(text, regularExpr, 'ignorecase') == 1;
 end
