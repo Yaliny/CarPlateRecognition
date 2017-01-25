@@ -158,14 +158,17 @@ try
         % Display input video frame on axis
         showFrameOnAxis(hAxes.axis1, frame);
         
-        if int32(frameNo) ~= 271 % FIXME: delete
-           continue;
+        %if int32(frameNo) ~= 271 % FIXME: delete
+         %  continue;
+        %end
+        if mod(frameNo,10) == 0 
+            plate = recognizePlateForGivenFrame(frame, frameNo, handles);
+            
+            if ~isempty(plate)
+                log(plate,handles);
+            end
         end
-
-        plate = recognizePlateForGivenFrame(frame, frameNo, handles);
-        if ~isempty(plate)
-            log(plate,handles);
-        end
+        
     end
     
     % When video reaches the end of file, display "Start" on the
@@ -215,22 +218,25 @@ end
 function plate = recognizePlate(frame)
 plate = '';
 
-% plate detection start
-H = padarray(2,[2 2]) - fspecial('gaussian' ,[5 5],2); % create unsharp mask
-sharpened = imfilter(frame,H);  % create a sharpened version of the image using that mask
-im=rgb2gray(sharpened);
-[g3, t3]=edge(im, 'Canny', [0.0001, 0.02], 1);
+im=rgb2gray(frame);
+sigma=1;
+f=zeros(128,128);
+f(32:96,32:96)=255;
+[g3, t3]=edge(im, 'canny', [0.04 0.10], sigma);
 se=strel('rectangle', [1 1]);
 BWimage=imerode(g3,se);
 gg = imclearborder(BWimage,8);
 bw = bwareaopen(gg,200);
 gg1 = imclearborder(bw,26);
+%imshow(gg1);im2
 
 %Dilation
 Id = imdilate(gg1, strel('diamond', 1));
+%imshow(Id);
 
 %Fill
 If = imfill(Id, 'holes');
+%imshow(If);
 
 %Find Plate
 [lab, n] = bwlabel(If);
@@ -243,21 +249,37 @@ for i = 1:regionsCount
     RectangleOfChoice = region.BoundingBox;
     PlateExtent = region.Extent;
 
+    PlateStartX = fix(RectangleOfChoice(1));
+    PlateStartY = fix(RectangleOfChoice(2));
     PlateWidth  = fix(RectangleOfChoice(3));
     PlateHeight = fix(RectangleOfChoice(4));
 
    if PlateWidth >= PlateHeight*1 && PlateExtent >= 0.7
         im2 = imcrop(frame, RectangleOfChoice);
-        im2 = binarizeForOCR(im2);
-        res = ocr(im2, 'CharacterSet', 'ABCDEFGHIJKLMNOPQRSTUWXYZ0123456789', 'TextLayout', 'Line');
-        text = strtrim(res.Text);
+        %figure, imshow(I);
+        %Icorrected = imtophat(im2, strel('disk', 30));
+        %figure, imshow(Icorrected);
 
-        if testPlateMatch(text)
-            plate = text;
-            break;
+        %level = graythresh(Icorrected);
+        %image = im2bw(Icorrected,level);
+        %figure, imshow(im2);
+        
+        % roi = round(getPosition(im2))
+        %im2 = binarizeForOCR(im2);
+
+        %res = ocr(im2, 'CharacterSet', 'ABCDEFGHIJKLMNOPQRSTUWXYZ0123456789');
+
+        res = ocr(im2, 'Language', 'plates/tessdata/plates.traineddata', 'CharacterSet', 'ABCDEFGHIJKLMNOPQRSTUWXYZ0123456789');
+        
+        
+        x = res.Text;
+        
+        if size(x,2) > 4 % do zmiany na regexa
+            plate = x;
         end
     end
 end
+
 end
 
 function image = binarizeForOCR(im)
