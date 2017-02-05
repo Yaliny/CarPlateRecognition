@@ -256,27 +256,20 @@ for i = 1:regionsCount
 
    if PlateWidth >= PlateHeight*1 && PlateExtent >= 0.7
         im2 = imcrop(frame, RectangleOfChoice);
-        %figure, imshow(I);
-        %Icorrected = imtophat(im2, strel('disk', 30));
-        %figure, imshow(Icorrected);
+        im2 = imcrop(im2,[5 5 size(im2,2)*0.95 size(im2,1)*0.9]);
 
-        %level = graythresh(Icorrected);
-        %image = im2bw(Icorrected,level);
-        %figure, imshow(im2);
-        
-        % roi = round(getPosition(im2))
-        %im2 = binarizeForOCR(im2);
+        if size(im2,1) ~= 0 && size(im2,2) ~= 0 && size(im2,3) ~= 0
+            res = ocr(im2);
 
-        %res = ocr(im2, 'CharacterSet', 'ABCDEFGHIJKLMNOPQRSTUWXYZ0123456789');
 
-        res = ocr(im2, 'Language', 'plates/tessdata/plates.traineddata', 'CharacterSet', 'ABCDEFGHIJKLMNOPQRSTUWXYZ0123456789');
+            x = strtrim(res.Text);
+
+            if length(x) > 4
+                plate = x;
+            end
+        end;
         
         
-        x = res.Text;
-        
-        if size(x,2) > 4 % do zmiany na regexa
-            plate = x;
-        end
     end
 end
 
